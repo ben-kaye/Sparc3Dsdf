@@ -100,13 +100,19 @@ def _flood_occupancy_grid(
     return occupancy_grid.to(device)
 
 
-def create_sdf_grid(
+def compute_sdf_on_grid(
     vertices: torch.Tensor,
     faces: torch.Tensor,
     resolution: int,
     surface_threshold: float,
     print_times: bool = False,
 ) -> torch.Tensor:
+    """
+    Compute the SDF on a grid of resolution^3 cubes packed in a cube of side length 2.
+
+    returns: SDF: (N+1, N+1, N+1), Grid xyz: (N+1, N+1, N+1, 3)
+    """
+
     _debug_times = {}
     grid_xyz = create_grid(resolution)
     flat_grid = einops.rearrange(grid_xyz, "x y z c -> (x y z) c")

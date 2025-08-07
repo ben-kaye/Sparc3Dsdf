@@ -54,17 +54,15 @@ def get_displacements(udf: torch.Tensor, eta: float, clip: bool = True) -> torch
     return vertex_displacements
 
 
-def sdf_to_sparubes(
-    grid_xyz: torch.Tensor,
+def sdf_to_sparcubes(
     sdf: torch.Tensor,
-    udf: torch.Tensor,
+    grid_xyz: torch.Tensor,
     truncate_distance: float,
     eta: float,
 ) -> Sparcube:
     """
-    grid_xyz: (N, N, N, 3)
     sdf: (N, N, N)
-    udf: (N, N, N)
+    grid_xyz: (N, N, N, 3)
     truncate_distance: float, value at which to truncate the sdf, note only one sided
     eta: float, step size of vertex displacement
     """
@@ -72,6 +70,6 @@ def sdf_to_sparubes(
     assert truncate_distance > 0, "truncate_distance must be positive"
 
     active_mask = get_active(sdf, truncate_distance)
-    vertex_displacements = get_displacements(udf, eta)
+    vertex_displacements = get_displacements(sdf.abs(), eta)
 
     return Sparcube(grid_xyz, vertex_displacements, sdf, active_mask)
