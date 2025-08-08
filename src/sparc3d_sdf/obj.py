@@ -16,7 +16,7 @@ def normalize(vertices: torch.Tensor) -> torch.Tensor:
     min_, max_ = bbox(vertices)
     scale = (max_ - min_).max() / 2
     center_ = (min_ + max_) / 2
-    return (vertices - center_) / scale
+    return (vertices - center_) / (scale + 1e-8)
 
 
 def _combine_scene(mesh: trimesh.Scene) -> tuple[torch.Tensor, torch.Tensor]:
