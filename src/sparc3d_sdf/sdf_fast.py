@@ -3,7 +3,7 @@ import torch
 from kaolin.metrics.trianglemesh import point_to_mesh_distance
 from kaolin.ops.mesh import index_vertices_by_faces
 from scipy.ndimage import label
-from typing import Generator
+from typing import Generator, Literal
 import sparc3d_sdf.obj as utils
 
 
@@ -26,29 +26,43 @@ def create_grid(N: int) -> torch.Tensor:
 
 
 def unsigned_distance_field(
-    vertices: torch.Tensor, faces: torch.Tensor, queries: torch.Tensor
+    vertices: torch.Tensor,
+    faces: torch.Tensor,
+    queries: torch.Tensor,
+    device: Literal["auto", "cpu"] | torch.device,
 ) -> torch.Tensor:
     """
+    compute the UDF for a set of queries using kaolin's point_to_mesh_distance
+
+    queries: (N, 3)
+    vertices: (M, 3)
+    faces: (F, 3)
+
+    returns: (N, )
+
     warning: mesh but be manifold!
     """
 
-    _verts = vertices[None].float().cuda()
-    face_vertices = index_vertices_by_faces(_verts, faces.cuda().long())
-    try:
-        square_dist, index, dist_type = point_to_mesh_distance(
-            queries.cuda()[None].float(), face_vertices.cuda()
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    _verts = vertices[None].float().to(device)
+    face_vertices = index_vertices_by_faces(_verts, faces.to(device).long())
+
+    if "cuda" in device:
+        try:
+            square_dist, *_ = point_to_mesh_distance(
+                queries[None].float().to(device), face_vertices
+            )
+        except torch.cuda.OutOfMemoryError as e:
+            # try again with CPU
+            print("UDF calculation: CUDA out of memory, defaulting to CPU")
+            device = "cpu"
+
+    if device == "cpu":
+        square_dist, *_ = point_to_mesh_distance(
+            queries.float().cpu(), face_vertices.cpu()
         )
-    except torch.cuda.OutOfMemoryError as e:
-        face_vertices = face_vertices.cuda()
-        batch_size = 2**26
-        indices = torch.arange(0, queries.shape[0]).split(batch_size)
-        square_dists = [
-            point_to_mesh_distance(
-                queries[i].float()[None].cuda(), face_vertices.cuda()
-            )[0].cpu()
-            for i in indices
-        ]
-        square_dist = torch.cat(square_dists, dim=1)
 
     unsigned_distance = square_dist[0].sqrt().cpu()
 
@@ -288,7 +302,7 @@ def sparse_udf(
         n3=initial_resolution + 1,
     )
 
-    # TODO could/should avoid recomputing the UDF for the already (computed) active vertices
+    # TODO could/should avoid recomputing the UDF for the active vertices
     # effect matters less at high scale factors..
 
     detailed_sparse_grid_xyz, detailed_sparse_grid_indices = _staged_udf_vertices(
