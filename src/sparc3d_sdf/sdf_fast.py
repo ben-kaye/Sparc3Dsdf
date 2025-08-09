@@ -29,7 +29,7 @@ def unsigned_distance_field(
     vertices: torch.Tensor,
     faces: torch.Tensor,
     queries: torch.Tensor,
-    device: Literal["auto", "cpu"] | torch.device,
+    device: Literal["auto", "cpu"] | torch.device = "auto",
 ) -> torch.Tensor:
     """
     compute the UDF for a set of queries using kaolin's point_to_mesh_distance
@@ -54,7 +54,7 @@ def unsigned_distance_field(
             square_dist, *_ = point_to_mesh_distance(
                 queries[None].float().to(device), face_vertices
             )
-        except torch.cuda.OutOfMemoryError as e:
+        except torch.cuda.OutOfMemoryError:
             # try again with CPU
             print("UDF calculation: CUDA out of memory, defaulting to CPU")
             device = "cpu"
@@ -158,17 +158,19 @@ def compute_sdf_on_grid(
             )
         else:
             (
-                sparse_udf,
+                _sparse_udf,
                 sparse_grid_xyz,
                 sparse_grid_indices,
-            ) = sparse_udf(vertices, faces, initial_resolution, resolution)
+            ) = sparse_unsigned_distance_field(
+                vertices, faces, initial_resolution, resolution
+            )
             udf = torch.zeros_like(grid_xyz[..., 0])
             torch.fill_(udf, 2 * torch.sqrt(torch.tensor(3.0)))
             udf[
                 sparse_grid_indices[:, 0],
                 sparse_grid_indices[:, 1],
                 sparse_grid_indices[:, 2],
-            ] = sparse_udf
+            ] = _sparse_udf
             udf = einops.rearrange(udf, "n1 n2 n3 -> (n1 n2 n3)")
 
     _debug_times["udf"] = t.elapsed
@@ -191,6 +193,21 @@ def compute_sdf_on_grid(
     sdf = sign * udf
 
     return sdf, grid_xyz
+
+
+def get_active_cubes(active_vertices: torch.BoolTensor) -> torch.Tensor:
+    active_cubes_mask = (
+        active_vertices[:-1, :-1, :-1]
+        & active_vertices[1:, :-1, :-1]
+        & active_vertices[:-1, 1:, :-1]
+        & active_vertices[:-1, :-1, 1:]
+        & active_vertices[1:, 1:, :-1]
+        & active_vertices[1:, :-1, 1:]
+        & active_vertices[:-1, 1:, 1:]
+        & active_vertices[1:, 1:, 1:]
+    )
+
+    return active_cubes_mask
 
 
 def _staged_udf_vertices(
@@ -217,16 +234,7 @@ def _staged_udf_vertices(
     # upscale the active_vertices to the dense grid
 
     # TODO / FIXME verify this calculation, we may want to consider any cube with any active vertex instead of cubes with all active vertices
-    active_cubes_mask = (
-        active_vertices[:-1, :-1, :-1]
-        & active_vertices[1:, :-1, :-1]
-        & active_vertices[:-1, 1:, :-1]
-        & active_vertices[:-1, :-1, 1:]
-        & active_vertices[1:, 1:, :-1]
-        & active_vertices[1:, :-1, 1:]
-        & active_vertices[:-1, 1:, 1:]
-        & active_vertices[1:, 1:, 1:]
-    )
+    active_cubes_mask = get_active_cubes(active_vertices)
 
     scale_factor = resolution // initial_resolution
 
@@ -263,7 +271,7 @@ def _staged_udf_vertices(
     ], vertex_indices
 
 
-def sparse_udf(
+def sparse_unsigned_distance_field(
     vertices: torch.Tensor,
     faces: torch.Tensor,
     initial_resolution: int,
