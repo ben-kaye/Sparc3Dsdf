@@ -18,7 +18,11 @@ def main(
 
     with Timer(label="SDF computation in.."):
         sdf, grid_xyz = compute_sdf_on_grid(
-            vertices, faces, resolution=N, surface_threshold=1 / N
+            vertices,
+            faces,
+            resolution=N,
+            surface_threshold=1 / N,
+            initial_resolution=64,
         )
 
     # note eta and truncation distance are not specified in paper
@@ -27,7 +31,6 @@ def main(
         sparcubes = sdf_to_sparcubes(
             sdf, grid_xyz, truncate_distance, eta, clip_displacements=False
         )
-
     with Timer(label="SDF to mesh in.."):
         try:
             vertices_out, faces_out = sparcubes_to_mesh_dense(sparcubes, "cuda")
@@ -39,7 +42,7 @@ def main(
 
 
 if __name__ == "__main__":
-    N = 128
+    N = 1024
     main(
         Path("assets/plane.obj"),
         N=N,

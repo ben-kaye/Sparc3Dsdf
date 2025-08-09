@@ -3,7 +3,7 @@ import torch
 from kaolin.metrics.trianglemesh import point_to_mesh_distance
 from kaolin.ops.mesh import index_vertices_by_faces
 from scipy.ndimage import label
-
+from typing import Generator
 import sparc3d_sdf.obj as utils
 
 
@@ -34,9 +34,22 @@ def unsigned_distance_field(
 
     _verts = vertices[None].float().cuda()
     face_vertices = index_vertices_by_faces(_verts, faces.cuda().long())
-    square_dist, index, dist_type = point_to_mesh_distance(
-        queries.cuda()[None].float(), face_vertices.cuda()
-    )
+    try:
+        square_dist, index, dist_type = point_to_mesh_distance(
+            queries.cuda()[None].float(), face_vertices.cuda()
+        )
+    except torch.cuda.OutOfMemoryError as e:
+        face_vertices = face_vertices.cuda()
+        batch_size = 2**26
+        indices = torch.arange(0, queries.shape[0]).split(batch_size)
+        square_dists = [
+            point_to_mesh_distance(
+                queries[i].float()[None].cuda(), face_vertices.cuda()
+            )[0].cpu()
+            for i in indices
+        ]
+        square_dist = torch.cat(square_dists, dim=1)
+
     unsigned_distance = square_dist[0].sqrt().cpu()
 
     return unsigned_distance
@@ -106,9 +119,13 @@ def compute_sdf_on_grid(
     resolution: int,
     surface_threshold: float,
     print_times: bool = False,
+    initial_resolution: int | None = None,
 ) -> torch.Tensor:
     """
     Compute the SDF on a grid of resolution^3 cubes packed in a cube of side length 2.
+
+    IF initial_resolution is not None, use a staged UDF calculation
+        - calculate a coarse UDF, then refine it at the higher resolution
 
     returns: SDF: (N+1, N+1, N+1), Grid xyz: (N+1, N+1, N+1, 3)
     """
@@ -119,11 +136,26 @@ def compute_sdf_on_grid(
 
     # Fast calculate the UDF using kaolin
     with utils.Timer(label="Calculated UDF in", print_time=print_times) as t:
-        udf = unsigned_distance_field(
-            vertices,
-            faces,
-            flat_grid,
-        )
+        if initial_resolution is None:
+            udf = unsigned_distance_field(
+                vertices,
+                faces,
+                flat_grid,
+            )
+        else:
+            (
+                sparse_udf,
+                sparse_grid_xyz,
+                sparse_grid_indices,
+            ) = sparse_udf(vertices, faces, initial_resolution, resolution)
+            udf = torch.zeros_like(grid_xyz[..., 0])
+            torch.fill_(udf, 2 * torch.sqrt(torch.tensor(3.0)))
+            udf[
+                sparse_grid_indices[:, 0],
+                sparse_grid_indices[:, 1],
+                sparse_grid_indices[:, 2],
+            ] = sparse_udf
+            udf = einops.rearrange(udf, "n1 n2 n3 -> (n1 n2 n3)")
 
     _debug_times["udf"] = t.elapsed
 
@@ -145,3 +177,126 @@ def compute_sdf_on_grid(
     sdf = sign * udf
 
     return sdf, grid_xyz
+
+
+def _staged_udf_vertices(
+    active_vertices: torch.BoolTensor, initial_resolution: int, resolution: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    get the coordinates of the active vertices with spacing at <resolution>
+
+
+    Ni is the initial resolution
+    N is the final resolution
+    active_vertices: (Ni + 1, Ni + 1, Ni + 1)
+
+    returns SPARSE tensor of shape (N + 1, N + 1, N + 1, 3) where the active vertices are the vertices of the grid
+    as values (P, 3) and indices (P, 3)
+    """
+
+    assert resolution % initial_resolution == 0, (
+        "resolution must be a multiple of initial_resolution"
+    )
+
+    # naive dense
+    dense_grid = create_grid(resolution)
+    # upscale the active_vertices to the dense grid
+
+    # TODO / FIXME verify this calculation, we may want to consider any cube with any active vertex instead of cubes with all active vertices
+    active_cubes_mask = (
+        active_vertices[:-1, :-1, :-1]
+        & active_vertices[1:, :-1, :-1]
+        & active_vertices[:-1, 1:, :-1]
+        & active_vertices[:-1, :-1, 1:]
+        & active_vertices[1:, 1:, :-1]
+        & active_vertices[1:, :-1, 1:]
+        & active_vertices[:-1, 1:, 1:]
+        & active_vertices[1:, 1:, 1:]
+    )
+
+    scale_factor = resolution // initial_resolution
+
+    # for each active cube, get the vertex indices, then
+    def _upscale_cube_indices(
+        active_cubes_mask: torch.Tensor, scale_factor: int
+    ) -> Generator[torch.Tensor, None, None]:
+        """
+        upscale the cube indices by the scale factor
+        """
+        for cube_index_ijk in torch.nonzero(active_cubes_mask, as_tuple=False):
+            # index is corner of cube,
+
+            vertex_indices = torch.meshgrid(
+                torch.arange(scale_factor),
+                torch.arange(scale_factor),
+                torch.arange(scale_factor),
+                indexing="ij",
+            )
+            vertex_indices = einops.rearrange(
+                torch.stack(vertex_indices, dim=-1), "x y z c -> (x y z) c"
+            )
+
+            vertex_indices = vertex_indices + scale_factor * cube_index_ijk
+
+            yield vertex_indices
+
+    vertex_indices = torch.cat(
+        list(_upscale_cube_indices(active_cubes_mask, scale_factor))
+    )
+
+    return dense_grid[
+        vertex_indices[:, 0], vertex_indices[:, 1], vertex_indices[:, 2]
+    ], vertex_indices
+
+
+def sparse_udf(
+    vertices: torch.Tensor,
+    faces: torch.Tensor,
+    initial_resolution: int,
+    resolution: int,
+    threshold_factor: float = 3,
+):
+    """
+    Compute a sparse UDF at the specified resolution, via a 2 stage calculation:
+    - densely compute a UDF at the initial resolution,
+    - obtain a sparse voxel mask of active cubes with thresholding
+    - refine the UDF at full resolution within the sparse voxel mask
+
+    returns:
+    - detailed_udf_values: (P, )
+    - detailed_sparse_grid_xyz: (P, 3)
+    - detailed_sparse_grid_indices: (P, 3)
+    """
+
+    grid_vertices = create_grid(initial_resolution)
+    grid_flat = einops.rearrange(grid_vertices, "x y z c -> (x y z) c")
+    initial_udf = unsigned_distance_field(vertices, faces, grid_flat)
+
+    spacing = 2 / initial_resolution
+    threshold = (
+        threshold_factor * torch.sqrt(torch.tensor(3.0)) * spacing
+    )  # max distance a cube can resolve * threshold factor
+
+    active_vertices_flat = initial_udf <= threshold
+    # evaluate within all the cubes that have an active vertex
+
+    active_vertices = einops.rearrange(
+        active_vertices_flat,
+        "(n1 n2 n3) -> n1 n2 n3",
+        n1=initial_resolution + 1,
+        n2=initial_resolution + 1,
+        n3=initial_resolution + 1,
+    )
+
+    # TODO could/should avoid recomputing the UDF for the already (computed) active vertices
+    # effect matters less at high scale factors..
+
+    detailed_sparse_grid_xyz, detailed_sparse_grid_indices = _staged_udf_vertices(
+        active_vertices, initial_resolution, resolution
+    )
+
+    detailed_udf_values = unsigned_distance_field(
+        vertices, faces, detailed_sparse_grid_xyz
+    )
+
+    return detailed_udf_values, detailed_sparse_grid_xyz, detailed_sparse_grid_indices
