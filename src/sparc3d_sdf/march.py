@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 import einops
+from typing import Literal
 
 
 def _get_adjacency(matrix: torch.BoolTensor):
@@ -24,6 +25,70 @@ def _get_adjacency(matrix: torch.BoolTensor):
         dim=-1,
     )
     return adjacency
+
+
+def _face_mask(occupied_voxels: torch.BoolTensor):
+    """
+    compute face mask memory efficiently
+
+    occupied_voxels: (X, Y, Z)
+    returns: (N, 4)
+
+    effectively implmenting:
+    face_mask = occupied_voxels[..., None] & ~_get_adjacency(occupied_voxels)
+    coordinates = torch.nonzero(face_mask, as_tuple=False)
+    return coordinates
+    """
+
+    _forward = slice(2, None)
+    _backward = slice(0, -2)
+    _identity = slice(1, -1)
+    _slices = [
+        [
+            _backward,
+            _identity,
+            _identity,
+        ],
+        [
+            _forward,
+            _identity,
+            _identity,
+        ],
+        [
+            _identity,
+            _backward,
+            _identity,
+        ],
+        [
+            _identity,
+            _forward,
+            _identity,
+        ],
+        [
+            _identity,
+            _identity,
+            _backward,
+        ],
+        [
+            _identity,
+            _identity,
+            _forward,
+        ],
+    ]
+
+    occupied_voxels = F.pad(
+        occupied_voxels, (1, 1, 1, 1, 1, 1), mode="constant", value=False
+    )
+
+    result = []
+    for k, _slice in enumerate(_slices):
+        coordinates = torch.nonzero(
+            occupied_voxels[_identity, _identity, _identity]
+            & ~occupied_voxels[_slice[0], _slice[1], _slice[2]]
+        )
+        coordinates = F.pad(coordinates, (0, 1), mode="constant", value=k)
+        result.append(coordinates)
+    return torch.cat(result, dim=0)
 
 
 def _get_vertices(grid: torch.BoolTensor):
@@ -85,7 +150,6 @@ def _faces_vertices(face_coordinates: torch.LongTensor, spacing: float):
     voxel_coords = face_coordinates[:, :3]
     face_indices = face_coordinates[:, 3]
 
-    
     _basis = torch.arange(2, device=device, dtype=torch.long)
     basis = torch.stack(torch.meshgrid(_basis, _basis, _basis, indexing="ij"), dim=-1)
     basis = einops.rearrange(basis, "x y z d -> (x y z) d")
@@ -106,16 +170,27 @@ def _faces_vertices(face_coordinates: torch.LongTensor, spacing: float):
     return vertices, faces
 
 
-def march_voxels(vertex_sign: torch.BoolTensor):
-    """
-    Extracts a surface mesh from a grid of vertex signs (X, Y, Z layout).
-    """
+def _edge_coordinates(
+    vertex_sign: torch.BoolTensor, mode: Literal["dense", "efficient"]
+):
     occupied_voxels = _get_vertices(vertex_sign).all(dim=-1)
-    faces_mask = occupied_voxels[..., None] & ~_get_adjacency(occupied_voxels)
-    coordinates = torch.nonzero(
-        faces_mask, as_tuple=False
-    )  # as_tuple=False is the default but explicit is fine
+    if mode == "efficient":
+        coordinates = _face_mask(occupied_voxels)
+        return coordinates
+
+    if mode != "dense":
+        raise ValueError(f"Invalid mode: {mode}")
+
+    face_mask = occupied_voxels[..., None] & ~_get_adjacency(occupied_voxels)
+    coordinates = torch.nonzero(face_mask, as_tuple=False)
+    return coordinates
+
+
+def march_voxels(
+    vertex_sign: torch.BoolTensor, mode: Literal["dense", "efficient"] = "efficient"
+):
     spacing = 2.0 / (vertex_sign.shape[0] - 1)
+    coordinates = _edge_coordinates(vertex_sign, mode=mode)
     vertices, faces = _faces_vertices(coordinates, spacing)
     vertices -= 1.0
     return vertices, faces
