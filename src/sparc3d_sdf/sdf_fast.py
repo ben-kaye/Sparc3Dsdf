@@ -7,18 +7,23 @@ from typing import Generator, Literal
 import sparc3d_sdf.obj as utils
 
 
-def create_grid(N: int) -> torch.Tensor:
+def vertex_grid(
+    L: int, indexing: Literal["xy", "ij"] = "ij", limits: tuple[float, float] = (-1, 1)
+) -> torch.Tensor:
     """
-    Create a grid of vertices of N^3 cubes packed in cube of side length 2.
+    Create a grid of vertices of L^3 cubes packed in cube of side length 2.
 
-    returns: (N+1, N+1, N+1, 3)
+    returns: (L+1, L+1, L+1, 3)
     """
+
+    if indexing == "xy":
+        raise ValueError()
 
     x, y, z = torch.meshgrid(
-        torch.linspace(-1, 1, N + 1),
-        torch.linspace(-1, 1, N + 1),
-        torch.linspace(-1, 1, N + 1),
-        indexing="xy",
+        torch.linspace(*limits, L + 1),
+        torch.linspace(*limits, L + 1),
+        torch.linspace(*limits, L + 1),
+        indexing=indexing,
     )
 
     queries = torch.stack((x, y, z), dim=-1)
@@ -145,7 +150,7 @@ def compute_sdf_on_grid(
     """
 
     _debug_times = {}
-    grid_xyz = create_grid(resolution)
+    grid_xyz = vertex_grid(resolution)
     flat_grid = einops.rearrange(grid_xyz, "x y z c -> (x y z) c")
 
     # Fast calculate the UDF using kaolin
@@ -230,7 +235,7 @@ def _staged_udf_vertices(
     )
 
     # naive dense
-    dense_grid = create_grid(resolution)
+    dense_grid = vertex_grid(resolution)
     # upscale the active_vertices to the dense grid
 
     # TODO / FIXME verify this calculation, we may want to consider any cube with any active vertex instead of cubes with all active vertices
@@ -290,7 +295,7 @@ def sparse_unsigned_distance_field(
     - detailed_sparse_grid_indices: (P, 3)
     """
 
-    grid_vertices = create_grid(initial_resolution)
+    grid_vertices = vertex_grid(initial_resolution)
     grid_flat = einops.rearrange(grid_vertices, "x y z c -> (x y z) c")
     initial_udf = unsigned_distance_field(vertices, faces, grid_flat)
 
