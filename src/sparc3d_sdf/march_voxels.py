@@ -1,3 +1,8 @@
+"""
+implement a voxelized version of the marching cubes algorithm
+memory efficiently!
+"""
+
 import torch
 import torch.nn.functional as F
 import einops
