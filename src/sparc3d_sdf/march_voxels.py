@@ -9,6 +9,7 @@ import torch
 import torch.nn.functional as F
 import einops
 from typing import Literal
+from sparc3d_sdf.grid_primitives import ORIENTED_FACE_TRIANGLES
 
 
 def _get_adjacency(matrix: torch.BoolTensor) -> torch.BoolTensor:
@@ -152,20 +153,7 @@ def _faces_triangles() -> torch.LongTensor:
         A long tensor of shape (6, 6) with local vertex indices for triangles.
     """
     triangles = torch.tensor(
-        [
-            # -x face (v0, v1, v2, v3)
-            [0, 1, 3, 0, 3, 2],
-            # +x face (v4, v5, v6, v7)
-            [4, 6, 7, 4, 7, 5],
-            # -y face (v0, v1, v4, v5)
-            [0, 4, 5, 0, 5, 1],
-            # +y face (v2, v3, v6, v7)
-            [2, 3, 7, 2, 7, 6],
-            # -z face (v0, v2, v4, v6)
-            [0, 2, 6, 0, 6, 4],
-            # +z face (v1, v3, v5, v7)
-            [1, 5, 7, 1, 7, 3],
-        ],
+        ORIENTED_FACE_TRIANGLES,
         dtype=torch.long,
     )
     return triangles
