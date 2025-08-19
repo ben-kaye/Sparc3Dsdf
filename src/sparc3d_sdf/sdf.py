@@ -13,6 +13,7 @@ from kaolin.ops.mesh import index_vertices_by_faces
 from scipy.ndimage import label
 from typing import Generator, Literal
 import sparc3d_sdf.utils as utils
+import math
 
 
 def vertex_grid(
@@ -154,7 +155,7 @@ def compute_sdf_on_grid(
     Compute the SDF on a grid of resolution^3 cubes packed in a cube of side length 2.
 
     IF initial_resolution is not None, use a staged UDF calculation
-        - calculate a coarse UDF, then refine it at the higher resolution
+        - calculate a coarse UDF, then refine it at the higher resolution, within the thre
 
     returns: SDF: (N+1, N+1, N+1), Grid xyz: (N+1, N+1, N+1, 3)
     """
@@ -180,7 +181,7 @@ def compute_sdf_on_grid(
                 vertices, faces, initial_resolution, resolution
             )
             udf = torch.zeros_like(grid_xyz[..., 0])
-            torch.fill_(udf, torch.sqrt(torch.tensor(3.0)))
+            torch.fill_(udf, math.sqrt(3))
             udf[
                 sparse_grid_indices[:, 0],
                 sparse_grid_indices[:, 1],
@@ -311,7 +312,7 @@ def sparse_unsigned_distance_field(
 
     spacing = 1 / initial_resolution
     threshold = (
-        threshold_factor * torch.sqrt(torch.tensor(3.0)) * spacing
+        threshold_factor * math.sqrt(3) * spacing
     )  # max distance a cube can resolve * threshold factor
 
     active_vertices_flat = initial_udf <= threshold
