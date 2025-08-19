@@ -1,6 +1,6 @@
 from sparc3d_sdf.generics import torus_sdf, rotate_point
 import sparc3d_sdf.sdf_fast as sdf_fast
-import sparc3d_sdf.march_voxels as march_voxels
+import sparc3d_sdf.voxelize as voxelize
 import torch
 import time
 import viser
@@ -22,7 +22,7 @@ def main(N: int, R: float, r: float, output_path: Path):
 
     # visualise the occupancy
 
-    vertices, faces = march_voxels.march_voxels(occupancy)
+    vertices, faces = voxelize.march_voxels(occupancy)
 
     # visualise with viser
     vertices_np = vertices.cpu().numpy()
