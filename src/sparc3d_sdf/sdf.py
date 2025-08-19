@@ -1,10 +1,18 @@
+"""
+Dense SDF computation.
+
+Uses algorithm described in Sparc3D <arXiv:2505.14521 [cs.CV]>
+1. Calculate UDF on a grid.
+2. Label the exterior with a flood-fill algorithm.
+"""
+
 import einops
 import torch
 from kaolin.metrics.trianglemesh import point_to_mesh_distance
 from kaolin.ops.mesh import index_vertices_by_faces
 from scipy.ndimage import label
 from typing import Generator, Literal
-import sparc3d_sdf.obj as utils
+import sparc3d_sdf.utils as utils
 
 
 def vertex_grid(

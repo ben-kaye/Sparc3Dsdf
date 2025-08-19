@@ -1,10 +1,12 @@
-from sparc3d_sdf.generics import torus_sdf, rotate_point
-import sparc3d_sdf.sdf_fast as sdf_fast
-import sparc3d_sdf.voxelize as voxelize
-import torch
 import time
-import viser
 from pathlib import Path
+
+import torch
+import viser
+
+import sparc3d_sdf.voxelize as voxelize
+from sparc3d_sdf import vertex_grid
+from sparc3d_sdf.generics import rotate_point, torus_sdf
 
 
 def main(N: int, R: float, r: float, output_path: Path):
@@ -13,7 +15,7 @@ def main(N: int, R: float, r: float, output_path: Path):
     axis_angle *= torch.pi / 4
 
     # vertex grid with 'xy' indexing
-    grid_xyz = sdf_fast.vertex_grid(N, indexing="ij")
+    grid_xyz = vertex_grid(N, indexing="ij")
 
     basis = rotate_point(grid_xyz, axis_angle)
     sdf = torus_sdf(basis, R, r)

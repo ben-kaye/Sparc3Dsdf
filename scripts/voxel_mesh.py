@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from sparc3d_sdf.obj import load_obj, Timer, save_obj
-from sparc3d_sdf.sdf_fast import compute_sdf_on_grid
+from sparc3d_sdf.utils import load_obj, Timer, save_obj
+from sparc3d_sdf.sdf import compute_sdf_on_grid
 from sparc3d_sdf.voxelize import march_voxels
 
 import math
