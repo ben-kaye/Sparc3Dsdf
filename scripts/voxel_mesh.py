@@ -4,7 +4,6 @@ from sparc3d_sdf.obj import load_obj, Timer, save_obj
 from sparc3d_sdf.sdf_fast import compute_sdf_on_grid
 from sparc3d_sdf.march_voxels import march_voxels
 
-import torch
 import math
 
 
@@ -19,7 +18,7 @@ def main(
             vertices,
             faces,
             resolution=N,
-            surface_threshold=2 * math.sqrt(3) / N,
+            surface_threshold=math.sqrt(3) / N,
             initial_resolution=64,
         )
 

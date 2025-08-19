@@ -8,10 +8,12 @@ import sparc3d_sdf.obj as utils
 
 
 def vertex_grid(
-    L: int, indexing: Literal["xy", "ij"] = "ij", limits: tuple[float, float] = (-1, 1)
+    L: int,
+    indexing: Literal["xy", "ij"] = "ij",
+    limits: tuple[float, float] = (-0.5, 0.5),
 ) -> torch.Tensor:
     """
-    Create a grid of vertices of L^3 cubes packed in cube of side length 2.
+    Create a grid of vertices of L^3 cubes packed in cube of side length 1.0.
 
     returns: (L+1, L+1, L+1, 3)
     """
@@ -43,7 +45,7 @@ def unsigned_distance_field(
     vertices: (M, 3)
     faces: (F, 3)
 
-    returns: (N, )
+    returns: (N, ) on CPU
 
     warning: mesh but be manifold!
     """
@@ -170,7 +172,7 @@ def compute_sdf_on_grid(
                 vertices, faces, initial_resolution, resolution
             )
             udf = torch.zeros_like(grid_xyz[..., 0])
-            torch.fill_(udf, 2 * torch.sqrt(torch.tensor(3.0)))
+            torch.fill_(udf, torch.sqrt(torch.tensor(3.0)))
             udf[
                 sparse_grid_indices[:, 0],
                 sparse_grid_indices[:, 1],
@@ -299,7 +301,7 @@ def sparse_unsigned_distance_field(
     grid_flat = einops.rearrange(grid_vertices, "x y z c -> (x y z) c")
     initial_udf = unsigned_distance_field(vertices, faces, grid_flat)
 
-    spacing = 2 / initial_resolution
+    spacing = 1 / initial_resolution
     threshold = (
         threshold_factor * torch.sqrt(torch.tensor(3.0)) * spacing
     )  # max distance a cube can resolve * threshold factor

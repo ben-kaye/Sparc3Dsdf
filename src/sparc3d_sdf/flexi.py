@@ -5,28 +5,23 @@ import kaolin.utils.testing as testing
 import torch
 from kaolin.ops.conversions.flexicubes import FlexiCubes
 from typing import Callable
+from sparc3d_sdf.grid_primitives import ADJACENCY_OFFSETS, VERTEX_OFFSETS
 
 
-def _vertex_to_cube() -> torch.LongTensor:
+def _vertex_to_cube(**kwargs) -> torch.LongTensor:
     """
     index offsets for a cube
     (8, 3)
     """
-    _prim = torch.arange(2, dtype=torch.long)
-    offsets = torch.stack(torch.meshgrid(_prim, _prim, _prim, indexing="ij"), dim=-1)
-    offsets = einops.rearrange(offsets, "d h w c -> (d h w) c")
-    return offsets
+    return torch.tensor(VERTEX_OFFSETS, dtype=torch.long, **kwargs)
 
 
-def _adjacency() -> torch.LongTensor:
+def _adjacency(**kwargs) -> torch.LongTensor:
     """
     index offsets for adjacent cubes
     (6, 3)
     """
-    return torch.tensor(
-        [[-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1]],
-        dtype=torch.long,
-    )
+    return torch.tensor(ADJACENCY_OFFSETS, dtype=torch.long, **kwargs)
 
 
 def _offset_to_adjacency_index(offsets: torch.LongTensor) -> torch.LongTensor:
@@ -50,17 +45,17 @@ def _offset_to_adjacency_index(offsets: torch.LongTensor) -> torch.LongTensor:
     return 2 * axis + (sign + 1) // 2
 
 
-def _cube_index_to_linear(idx: torch.LongTensor, res: tuple[int, int, int]):
+def _cube_index_to_linear(index: torch.LongTensor, DHW: tuple[int, int, int]):
     """
-    Converts (..., 3) coordinates to linear indices for a grid of shape `res`.
+    Converts (..., 3) coordinates to linear indices for a grid of shape `DHW`.
     """
-    d, h, w = res
+    d, h, w = DHW
 
-    idx = idx.long()
-    return idx[..., 0] * (h * w) + idx[..., 1] * w + idx[..., 2]
+    index = index.long()
+    return index[..., 0] * (h * w) + index[..., 1] * w + index[..., 2]
 
 
-def extract_sparse_field(sdf_mask: torch.BoolTensor):
+def extract_sparse_field(active_mask: torch.BoolTensor):
     """
     Extracts active cubes, their vertex indices, and their adjacency in the DENSE grid.
 
@@ -73,13 +68,13 @@ def extract_sparse_field(sdf_mask: torch.BoolTensor):
         cube_coords (N, 3): The (x,y,z) integer coordinates of the N active cubes.
         cube_grid_shape (tuple): The shape of the grid of cubes, e.g., (L, L, L).
     """
-    device = sdf_mask.device
-    vertex_grid_shape = sdf_mask.shape
+    device = active_mask.device
+    vertex_grid_shape = active_mask.shape
     cube_grid_shape = tuple(s - 1 for s in vertex_grid_shape)
     cube_grid_shape_t = torch.tensor(cube_grid_shape, device=device, dtype=torch.long)
 
     # Find all active vertices
-    active_vertex_coords = torch.nonzero(sdf_mask)
+    active_vertex_coords = torch.nonzero(active_mask)
 
     # From active vertices, determine the set of active cubes
     potential_cubes = einops.rearrange(
@@ -95,11 +90,11 @@ def extract_sparse_field(sdf_mask: torch.BoolTensor):
 
     # --- Calculate vertex indices for each cube ---
     # (N, 1, 3) + (1, 8, 3) -> (N, 8, 3)
-    vertex_coords = cube_coords[:, None, :] + _vertex_to_cube().to(device)[None, :, :]
+    vertex_coords = cube_coords[:, None, :] + _vertex_to_cube(device=device)[None, :, :]
     vertex_idx = _cube_index_to_linear(vertex_coords, vertex_grid_shape)
 
     # --- Calculate adjacency for each cube ---
-    adj_coords = cube_coords[:, None, :] + _adjacency().to(device)[None, :, :]
+    adj_coords = cube_coords[:, None, :] + _adjacency(device=device)[None, :, :]
 
     # Mask out neighbors that are outside the grid boundaries
     outside_mask = ((adj_coords < 0) | (adj_coords >= cube_grid_shape_t)).any(dim=-1)
@@ -189,24 +184,26 @@ def remap_adjacency(
     return remapped_flat.view_as(adj_dense_indices)
 
 
-def dense_to_sparse(sdf: torch.Tensor, cube_resolution: tuple[int, int, int]):
+def convert_dense_to_sparse(
+    active_mask: torch.BoolTensor, cube_resolution: tuple[int, int, int]
+):
     """
     Example orchestration function to convert a dense field to a sparse representation.
 
     Args:
-        vertices (M,3): Coordinates of all vertices in the dense grid.
-        sdf (M,): SDF values for all vertices.
+        active_mask (M,): Dense boolean mask of active vertices
         resolution (D,H,W): The resolution of the CUBE grid.
     """
-    N = max(*cube_resolution)
-    device = sdf.device
-
-    threshold = 2 * math.sqrt(3) / N
-    sdf_mask = sdf.abs() < threshold
 
     # Reshape the mask into a 3D grid for extraction
     vertex_grid_shape = tuple(r + 1 for r in cube_resolution)
-    sdf_mask_grid = sdf_mask.view(vertex_grid_shape)
+
+    assert active_mask.dim() == 1, "active_mask must be a 1D tensor"
+    assert active_mask.shape[0] == math.prod(cube_resolution), (
+        "must be same length as the number of vertices in the cube grid"
+    )
+
+    sdf_mask_grid = active_mask.view(vertex_grid_shape)
 
     # 1. Extract sparse cubes and their DENSE indices
     cube_vtx_idx_dense, adj_idx_dense, cube_coords, cube_grid_shape = (
@@ -357,7 +354,7 @@ class SparseCube(FlexiCubes):
             and testing.check_tensor(
                 voxelgrid_features, (num_vertices, None), throw=False
             )
-        ), f"'voxelgrid_features' should be a tensor of shape (num_cubes, num_features)"
+        ), "'voxelgrid_features' should be a tensor of shape (num_cubes, num_features)"
         assert voxelgrid_features is None or not (
             output_tetmesh or grad_func is not None
         ), "'voxelgrid_features' is not supported with 'output_tetmesh' or 'grad_func'"

@@ -7,6 +7,25 @@ ORIENTED_FACE_TRIANGLES = (
     (1, 5, 7, 1, 7, 3),
 )
 
-ADJACENT_CUBES = (
-    
+# (6, 3) offsets that yield adjacent cubes
+ADJACENCY_OFFSETS = (
+    (-1, 0, 0),
+    (1, 0, 0),
+    (0, -1, 0),
+    (0, 1, 0),
+    (0, 0, -1),
+    (0, 0, 1),
+)
+
+
+# (8, 3) meshgrid of arange(2) cubed, ij indexing
+VERTEX_OFFSETS = (
+    (0, 0, 0),
+    (0, 0, 1),
+    (0, 1, 0),
+    (0, 1, 1),
+    (1, 0, 0),
+    (1, 0, 1),
+    (1, 1, 0),
+    (1, 1, 1),
 )

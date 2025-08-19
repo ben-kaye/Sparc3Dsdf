@@ -4,18 +4,16 @@ import sparc3d_sdf.march_voxels as march_voxels
 import torch
 import time
 import viser
+from pathlib import Path
 
 
-def main():
-    R = 0.6
-    r = 0.25
-
+def main(N: int, R: float, r: float, output_path: Path):
     axis_angle = torch.tensor([0.5, 0.5, 0])
     axis_angle /= axis_angle.norm(keepdim=True)
     axis_angle *= torch.pi / 4
 
     # vertex grid with 'xy' indexing
-    grid_xyz = sdf_fast.vertex_grid(128, indexing="ij")
+    grid_xyz = sdf_fast.vertex_grid(N, indexing="ij")
 
     basis = rotate_point(grid_xyz, axis_angle)
     sdf = torus_sdf(basis, R, r)
@@ -32,7 +30,7 @@ def main():
 
     import trimesh
 
-    trimesh.Trimesh(vertices_np, faces_np, process=False).export("torus.obj")
+    trimesh.Trimesh(vertices_np, faces_np, process=False).export(output_path)
 
     server = viser.ViserServer()
 
@@ -57,4 +55,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(N=128, R=0.3, r=0.13, output_path=Path("torus.obj"))

@@ -1,6 +1,5 @@
 import torch
 from dataclasses import dataclass
-import torch.nn.functional as F
 from typing import Literal
 import kaolin.ops.conversions as K
 
@@ -98,6 +97,8 @@ def sdf_to_sparcubes(
     )
 
     return Sparcube(grid_xyz, vertex_displacements, sdf, active_mask)
+
+
 def generate_dense_cube_indices(res_d, res_h, res_w, device):
     d_coords = torch.arange(res_d - 1, device=device)
     h_coords = torch.arange(res_h - 1, device=device)

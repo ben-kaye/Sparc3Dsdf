@@ -9,12 +9,12 @@ def bbox(vertices: torch.Tensor) -> torch.Tensor:
     return torch.stack([min_, max_], dim=0)
 
 
-def normalize(vertices: torch.Tensor) -> torch.Tensor:
+def normalize(vertices: torch.Tensor, length: float = 1.0) -> torch.Tensor:
     """
-    uniform scale and center to unit cube
+    uniform scale and center to unit width cube centered at origin
     """
     min_, max_ = bbox(vertices)
-    scale = (max_ - min_).max() / 2
+    scale = (max_ - min_).max() / length
     center_ = (min_ + max_) / 2
     return (vertices - center_) / (scale + 1e-8)
 
