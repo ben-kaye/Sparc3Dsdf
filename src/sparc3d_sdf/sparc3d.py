@@ -2,40 +2,24 @@
 Sparc3D utils
 """
 
-import torch
 from typing import Literal
 
-
-def spatial_gradient(udf: torch.Tensor, delta: float):
-    """
-    compute spatial gradient of udf using finite differences 2nd order approx
-
-    udf: (N, N, N)
-    delta: float (grid spacing)
-
-    returns: (N, N, N, 3)
-    """
-
-    grads_tuple = torch.gradient(udf.float(), dim=(0, 1, 2), spacing=delta)
-    gradient = torch.stack(grads_tuple, dim=-1)
-
-    return gradient
+import torch
 
 
-# TODO calculate displacements or gradients only within the active mask
-def get_displacements(
+def calculate_displacements(
     udf: torch.Tensor,
     eta: float,
-    clip: bool,
-    clip_mode: Literal["abs", "norm"],
+    clip: Literal["abs", "norm", "tanh", None],
+    device: Literal["auto", "cpu", "cuda"] = "auto",
 ) -> torch.Tensor:
     """
     displace vertices in -Grad(udf) direction
 
     udf: (N, N, N)
     eta: float (step size)
-    clip: bool (whether to clip displacements)
-    clip_mode: Literal["abs", "norm"] (how to clip displacements)
+
+    clip: Literal["abs", "norm"] (how to clip displacements)
     clip displacements to be less than 1/2 the grid spacing
 
     abs mode: clip displacements to be less than 1/2 the grid spacing
@@ -44,19 +28,28 @@ def get_displacements(
     returns: (N, N, N, 3)
     """
 
-    delta = 2 / udf.shape[0]
-    udf_gradient = spatial_gradient(udf, delta)
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    vertex_displacements = -eta * udf_gradient
+    delta = 1 / (udf.shape[0] - 1)
+
+    # there was an attempt here to minimise gradients as this has a cursed memory cost
+    udf = torch.stack(
+        torch.gradient(udf.to(device), dim=(2, 1, 0), spacing=delta), dim=-1
+    )
+
+    vertex_displacements = -eta * udf
 
     if clip:
-        if clip_mode == "norm":
+        if clip == "norm":
             clip_mask = (vertex_displacements.abs() > delta / 2).any(dim=-1)
             vertex_displacements[clip_mask] *= (
                 delta / 2 / vertex_displacements[clip_mask].norm(keepdim=True)
             )
-        elif clip_mode == "abs":
+        elif clip == "abs":
             vertex_displacements = torch.clamp(
                 vertex_displacements, min=-delta / 2, max=delta / 2
             )
+        elif clip == "tanh":
+            vertex_displacements = torch.tanh(vertex_displacements) * delta / 2
     return vertex_displacements
