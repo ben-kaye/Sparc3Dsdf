@@ -179,7 +179,7 @@ def convert_dense_to_sparse(
     vertex_grid_shape = tuple(r + 1 for r in cube_resolution)
 
     assert active_mask.dim() == 1, "active_mask must be a 1D tensor"
-    assert active_mask.shape[0] == math.prod(cube_resolution), (
+    assert active_mask.shape[0] == math.prod(vertex_grid_shape), (
         "must be same length as the number of vertices in the cube grid"
     )
 
