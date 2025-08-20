@@ -27,7 +27,7 @@ def main(
             faces,
             resolution=N,
             surface_threshold=threshold,
-            initial_resolution=64,
+            initial_resolution=[64, 256],
         )
 
     # threshold of UDF for sparse extraction
@@ -36,7 +36,8 @@ def main(
 
     with Timer(label="Sparse conversion took "):
         sparse_indices, cube_idx, adj_idx = convert_dense_to_sparse(
-            sdf.cuda().abs() < threshold, cube_resolution
+            einops.rearrange(sdf.cuda().abs() < threshold, "d h w -> (d h w)"),
+            cube_resolution,
         )
         sparse_indices = sparse_indices.cpu()
         grid_xyz = einops.rearrange(grid_xyz, "d h w c -> (d h w) c")[sparse_indices]
@@ -49,7 +50,6 @@ def main(
             scalar_field=sdf.cuda(),
             cube_idx=cube_idx,
             adj_idx=adj_idx,
-            resolution=cube_resolution,
         )
 
     save_obj(output_path, vertices.cpu(), faces.cpu())

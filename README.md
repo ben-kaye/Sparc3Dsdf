@@ -16,7 +16,7 @@ Example script: `scripts/sdf_mesh.py`.  Calculates the SDF for the provided `ass
 To visualise the flood fill algorithm I also implemented a voxel version of marching cubes. Example is under `scripts/voxel_mesh.py`
 
 
-## Major TODOs
+## TODOs
 [X] Port marching cubes from https://github.com/nv-tlabs/FlexiCubes/blob/main/flexicubes.py to be sparse aware\
 [ ] Include render refinement\
 [ ] Triangle correction described in paper
