@@ -21,3 +21,8 @@ Calculates the SDF for the provided `assets/plane.obj` from Objaverse at $1024^3
 [ ] Render refinement?
 [ ] Improve the flood-fill extraction, see https://github.com/isl-org/unifi3d/blob/374201a23f2a3c36c8e595eec9431b77df8c08fa/scripts/compare_sdf.py#L31
 
+## Opinions on the Sparc3D method
+My implementation of the flood-fill step the most conservative approach. The Intel Labs / Unifi3d version (which was just released now) is a much more nuanced approach:
+1. Identify the barrier based on distance to mesh being < cell size in all 3 axes independently.
+2. Average 
+See also my notes on why the Sparc3D displacement step was unneccessary and harmful: https://ben-kaye.github.io/projects/1_sparc3d/
