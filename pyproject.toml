@@ -16,7 +16,7 @@ name = "sparc3d_sdf"
 description = "Fast SDF preprocessing library for meshes"
 authors = [{ name = "Ben Kaye", email = "kaye@robots.com" }]
 requires-python = ">=3.11"
-version = "0.0.4"
+version = "0.0.5"
 license = "BSD-3-Clause"
 
 
