@@ -1,19 +1,19 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
 dependencies = [
     "einops==0.*,>=0.8",
-    "torch==2.5.1",
+    "torch==2.*",
     "torchvision",
     "torchaudio",
     "trimesh==4.*",
-    "kaolin==0.17.0",
-    "scipy",
-] # "kaolin==0.17.0 -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.5.1_cu124.html",
+    "kaolin>=0.18.0",
+    "scipy==1.*",
+]
 name = "sparc3d_sdf"
-description = "Attempt to recreate Sparc3d (arXiv:2505.14521 [cs.CV])"
+description = "Fast SDF preprocessing library for meshes"
 authors = [{ name = "Ben Kaye", email = "kaye@robots.com" }]
 requires-python = ">=3.11"
 version = "0.0.4"

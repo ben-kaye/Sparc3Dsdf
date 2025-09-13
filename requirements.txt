@@ -1,9 +1,0 @@
-einops==0.*,>=0.8
-torch==2.5.1
-torchvision
-torchaudio
-kaolin==0.17.0 -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.5.1_cu124.html
-trimesh==4.*
-libigl
-iopath
-"pytorch3d@git+https://github.com/facebookresearch/pytorch3d.git"

@@ -1,22 +1,23 @@
-# Implementing Sparc3d
+# Hermes (formerly Sparc3D SDF)
 
-https://lizhihao6.github.io/Sparc3D/
+A fast SDF preprocessing library for meshes built on the ops provided in Kaolin, and referencing the approach described in Sparc3D.
 
-Sparc3D have not as of 2025-August-07 released their code, so I have been working on my own implementation. Please join my in recreating their methodology for the good of the Computer vision community! I will be taking pull requests.
-
-I have limited scope to just the SDF pre-processing as I wanted to learn how to complete these calculations!
+This originally a reference implementation using Kaolin based on the Sign distance field preprocessing described in the [Sparc3D paper / arXiv](https://arxiv.org/abs/2505.14521)  (which had/has not released their code, 2025-09-13).
 
 # Installation:
 See `INSTALL.md`
 
 # Usage
-Example script: `scripts/sdf_mesh.py`.  Calculates the SDF for the provided `assets/plane.obj` from Objaverse at $1024^3$ in under $30$ s with less than 16 GB VRAM.
+Example script: `scripts/sdf.py`. 
 
-## Also included..
-To visualise the flood fill algorithm I also implemented a voxel version of marching cubes. Example is under `scripts/voxel_mesh.py`
+```
+python scripts/sdf.py -i assets/plane.obj --N 1024 -o plane_1024.obj
+```
+
+Calculates the SDF for the provided `assets/plane.obj` from Objaverse at $1024^3$ in under $30$ s with less than 16 GB VRAM.
 
 
-## TODOs
-[X] Port marching cubes from https://github.com/nv-tlabs/FlexiCubes/blob/main/flexicubes.py to be sparse aware\
-[ ] Include render refinement\
-[ ] Triangle correction described in paper
+## Open TODOs
+[ ] Render refinement?
+[ ] Improve the flood-fill extraction, see https://github.com/isl-org/unifi3d/blob/374201a23f2a3c36c8e595eec9431b77df8c08fa/scripts/compare_sdf.py#L31
+

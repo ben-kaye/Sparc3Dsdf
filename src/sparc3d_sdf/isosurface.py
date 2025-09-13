@@ -65,39 +65,36 @@ class SparseCube(FlexiCubes):
         returns:
             case_ids: (P,)
         """
+
+        # This is a rewrite of the Flexicubes _get_case_id function
+        # but uses a sparse adjacency index instead of a dense adjacency index
+        # memory efficient but computationally slower
+        # also not as clean an implementation..
+
         all_case_ids = (
             occ_fx8 * self.cube_corners_idx.to(self.device).unsqueeze(0)
         ).sum(-1)
         all_problem_config = self.check_table.to(self.device)[all_case_ids]
 
-        # 2. Identify which cubes need checking: they must be on the surface AND have a problematic configuration.
         is_problematic = all_problem_config[..., 0] == 1
         to_check_mask = surf_cubes & is_problematic
 
-        # If no problematic surface cubes exist, we are done. Return the case IDs for surface cubes.
         if not to_check_mask.any():
             return all_case_ids[surf_cubes]
 
         indices_to_check = torch.nonzero(to_check_mask).squeeze(1)
 
-        # 3. For these problematic cubes, get their specific configuration and adjacency info.
         problem_config_to_check = all_problem_config[indices_to_check]
         adjacency_to_check = adj_idx[indices_to_check]
 
-        # 4. Determine the direction of the ambiguous face for each problematic cube.
-        # This is a 3D offset vector stored in the problem config table.
         direction_offsets = problem_config_to_check[..., 1:4]
 
-        # 5. Convert this 3D offset vector into an adjacency index (0-5) using our helper.
-        # This tells us which of the 6 neighbors we need to inspect.
         lookup_indices = _offset_to_adjacency_index(direction_offsets)
 
-        # 6. Using the adjacency indices, get the sparse index of the neighbor to check for each cube.
         neighbor_sparse_indices = torch.gather(
             adjacency_to_check, 1, lookup_indices.unsqueeze(1)
         ).squeeze(1)
 
-        # 7. Filter out cubes whose critical neighbor is out-of-bounds (indicated by -1).
         in_bounds_mask = neighbor_sparse_indices != -1
         if not in_bounds_mask.any():
             return all_case_ids[surf_cubes]  # No valid neighbors to check
@@ -106,17 +103,14 @@ class SparseCube(FlexiCubes):
         neighbor_indices_to_check = neighbor_sparse_indices[in_bounds_mask]
         config_of_cubes_to_invert = problem_config_to_check[in_bounds_mask]
 
-        # 8. Check if the neighbors are ALSO problematic by looking up their config.
         neighbor_is_problematic = all_problem_config[neighbor_indices_to_check, 0] == 1
 
         if not neighbor_is_problematic.any():
             return all_case_ids[surf_cubes]
 
-        # 9. Final filtering: select only the cubes whose neighbors were also problematic.
         final_indices_to_invert = cubes_to_invert_indices[neighbor_is_problematic]
         final_config = config_of_cubes_to_invert[neighbor_is_problematic]
 
-        # 10. Update the case IDs for these cubes using the "inverted case ID" from the table.
         inverted_case_ids = final_config[..., -1]
         all_case_ids[final_indices_to_invert] = inverted_case_ids
 

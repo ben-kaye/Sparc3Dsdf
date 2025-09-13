@@ -95,7 +95,7 @@ def occupancy_label(udf: torch.Tensor, surface_threshold: float) -> torch.Tensor
 
     N = udf.shape[0]
     assert N == udf.shape[1] == udf.shape[2], "udf must be a cube"
-    assert surface_threshold >= 1 / N, "truncation_distance too samll"
+    assert surface_threshold >= math.sqrt(3) / 2 / N, "truncation_distance too samll"
 
     is_near_surface = udf <= surface_threshold
     return _flood_occupancy_grid(is_near_surface)
@@ -149,16 +149,20 @@ def compute_sdf_on_grid(
     resolution: int,
     surface_threshold: float,
     print_times: bool = False,
-    initial_resolution: int | list[int] | None = None,
+    intermediate_resolutions: int | list[int] | None = None,
 ) -> torch.Tensor:
     """
     Compute the SDF on a grid of resolution^3 cubes packed in a cube of side length 2.
 
-    IF initial_resolution is not None, use a staged UDF calculation
+    IF intermediate_resolutions is not None, use a staged UDF calculation
         - calculate a coarse UDF, then refine it at the higher resolution, within the thre
 
     returns: SDF: (N+1, N+1, N+1), Grid xyz: (N+1, N+1, N+1, 3)
     """
+
+    expected_threshold = math.sqrt(3) / resolution / 2
+    affordance = surface_threshold / expected_threshold
+    assert affordance >= 1, "surface_threshold is too small"
 
     _debug_times = {}
     grid_xyz = vertex_grid(resolution)
@@ -166,7 +170,7 @@ def compute_sdf_on_grid(
 
     # Fast calculate the UDF using kaolin
     with utils.Timer(label="Calculated UDF in", print_time=print_times) as t:
-        if initial_resolution is None:
+        if intermediate_resolutions is None:
             udf = unsigned_distance_field(
                 vertices,
                 faces,
@@ -182,10 +186,10 @@ def compute_sdf_on_grid(
             )
 
         else:
-            if isinstance(initial_resolution, int):
-                resolutions = [initial_resolution, resolution]
+            if isinstance(intermediate_resolutions, int):
+                resolutions = [intermediate_resolutions, resolution]
             else:
-                resolutions = [*initial_resolution, resolution]
+                resolutions = [*intermediate_resolutions, resolution]
             udf = _iterative_udf(vertices, faces, resolutions)
 
     _debug_times["udf"] = t.elapsed
@@ -312,6 +316,9 @@ def _iterative_udf(vertices, faces, resolutions: list[int]):
     )
 
     for next_resolution in resolutions:
+        if next_resolution <= initial_resolution:
+            continue
+
         udf = _iterative_udf_k(
             vertices, faces, udf, initial_resolution, next_resolution
         )
